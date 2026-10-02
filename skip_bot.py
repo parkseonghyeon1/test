@@ -18,6 +18,13 @@ import cv2
 
 from detector import SkipDetector, imwrite_unicode, load_templates
 
+# 출력이 파일/파이프로 리다이렉트되거나 영문 Windows 에서도 한글 출력 때문에 죽지 않도록
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 if sys.platform != "win32":
     sys.exit("Windows 에서만 동작합니다.")
 
