@@ -170,31 +170,148 @@ def client_size(hwnd):
     return rc.right - rc.left, rc.bottom - rc.top
 
 
-def capture(hwnd):
-    """다른 창에 가려져 있어도 게임 클라이언트 영역을 캡처 → BGR numpy 배열 (최소화 상태는 불가)."""
-    w, h = client_size(hwnd)
-    if w <= 0 or h <= 0:
+user32.GetWindowRect.argtypes = [HWND, ctypes.POINTER(wintypes.RECT)]
+user32.ClientToScreen.argtypes = [HWND, ctypes.POINTER(wintypes.POINT)]
+gdi32.BitBlt.argtypes = [HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                         HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD]
+SRCCOPY = 0x00CC0020
+CAPTUREBLT = 0x40000000
+
+# 마지막 캡처 결과 (진단 로그용)
+last_capture = {"method": None, "error": None}
+
+
+def _read_bitmap(mdc, bmp, w, h):
+    bih = BITMAPINFOHEADER()
+    bih.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+    bih.biWidth, bih.biHeight = w, -h  # 음수 = top-down
+    bih.biPlanes, bih.biBitCount, bih.biCompression = 1, 32, 0
+    buf = np.empty((h, w, 4), dtype=np.uint8)
+    if not gdi32.GetDIBits(mdc, bmp, 0, h, buf.ctypes.data, ctypes.byref(bih), DIB_RGB_COLORS):
         return None
-    hdc = user32.GetDC(hwnd)
+    return buf[:, :, :3].copy()
+
+
+def _grab(hwnd, w, h, draw):
+    """w×h 메모리 비트맵에 draw(mdc) 로 그린 뒤 BGR 배열로 반환."""
+    hdc = user32.GetDC(None)
     mdc = gdi32.CreateCompatibleDC(hdc)
     bmp = gdi32.CreateCompatibleBitmap(hdc, w, h)
     old = gdi32.SelectObject(mdc, bmp)
     try:
-        if not user32.PrintWindow(hwnd, mdc, PW_CLIENTONLY | PW_RENDERFULLCONTENT):
+        ctypes.set_last_error(0)
+        if not draw(mdc, hdc):
+            last_capture["error"] = ctypes.get_last_error()
             return None
-        bih = BITMAPINFOHEADER()
-        bih.biSize = ctypes.sizeof(BITMAPINFOHEADER)
-        bih.biWidth, bih.biHeight = w, -h  # 음수 = top-down
-        bih.biPlanes, bih.biBitCount, bih.biCompression = 1, 32, 0
-        buf = np.empty((h, w, 4), dtype=np.uint8)
-        if not gdi32.GetDIBits(mdc, bmp, 0, h, buf.ctypes.data, ctypes.byref(bih), DIB_RGB_COLORS):
-            return None
-        return buf[:, :, :3].copy()
+        return _read_bitmap(mdc, bmp, w, h)
     finally:
         gdi32.SelectObject(mdc, old)
         gdi32.DeleteObject(bmp)
         gdi32.DeleteDC(mdc)
-        user32.ReleaseDC(hwnd, hdc)
+        user32.ReleaseDC(None, hdc)
+
+
+def _client_origin(hwnd):
+    """(클라이언트 좌상단의 화면 좌표, 창 좌상단 기준 클라이언트 오프셋)"""
+    pt = wintypes.POINT(0, 0)
+    user32.ClientToScreen(hwnd, ctypes.byref(pt))
+    wr = wintypes.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(wr))
+    return (pt.x, pt.y), (pt.x - wr.left, pt.y - wr.top), (wr.right - wr.left, wr.bottom - wr.top)
+
+
+def _cap_printwindow_client(hwnd, w, h):
+    return _grab(hwnd, w, h, lambda mdc, _: user32.PrintWindow(hwnd, mdc, PW_CLIENTONLY | PW_RENDERFULLCONTENT))
+
+
+def _cap_printwindow_full(hwnd, w, h):
+    _, (ox, oy), (ww, wh) = _client_origin(hwnd)
+    img = _grab(hwnd, ww, wh, lambda mdc, _: user32.PrintWindow(hwnd, mdc, PW_RENDERFULLCONTENT))
+    return None if img is None else img[oy:oy + h, ox:ox + w].copy()
+
+
+def _cap_screen(hwnd, w, h):
+    """화면에 보이는 그대로 복사. 게임 창이 다른 창에 가려지면 가린 창이 찍힌다."""
+    (sx, sy), _, _ = _client_origin(hwnd)
+    return _grab(hwnd, w, h, lambda mdc, sdc: gdi32.BitBlt(mdc, 0, 0, w, h, sdc, sx, sy, SRCCOPY | CAPTUREBLT))
+
+
+_BACKGROUND_METHODS = [("PrintWindow", _cap_printwindow_client), ("PrintWindow(전체)", _cap_printwindow_full)]
+
+
+def capture(hwnd, allow_screen=False):
+    """게임 클라이언트 영역 캡처 → BGR numpy 배열.
+
+    PrintWindow 는 다른 창에 가려져 있어도 동작한다 (최소화 상태는 불가).
+    allow_screen=True 면 PrintWindow 가 실패할 때 화면 복사(가려지면 안 됨)로 대체한다.
+    """
+    w, h = client_size(hwnd)
+    if w <= 0 or h <= 0:
+        return None
+    methods = _BACKGROUND_METHODS + ([("화면 복사", _cap_screen)] if allow_screen else [])
+    # 직전에 성공한 방식부터 시도
+    methods.sort(key=lambda m: m[0] != last_capture["method"])
+    for name, fn in methods:
+        img = fn(hwnd, w, h)
+        if img is not None and img.mean() >= 1.0:  # 완전히 검은 화면은 실패로 간주
+            last_capture["method"] = name
+            last_capture["error"] = None
+            return img
+    last_capture["method"] = None
+    return None
+
+
+# ---- 권한 ----
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+TOKEN_QUERY = 0x0008
+TokenElevation = 20
+advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+kernel32.OpenProcess.restype = wintypes.HANDLE
+kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+advapi32.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                         wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+shell32.ShellExecuteW.argtypes = [HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                                  wintypes.LPCWSTR, ctypes.c_int]
+shell32.ShellExecuteW.restype = ctypes.c_void_p
+
+
+def is_admin():
+    try:
+        return bool(shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def game_elevation(hwnd):
+    """게임 프로세스가 관리자 권한인지: True / False / None(확인 불가 = 보호된 프로세스일 가능성)."""
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    hp = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+    if not hp:
+        return None
+    try:
+        tok = wintypes.HANDLE()
+        if not advapi32.OpenProcessToken(hp, TOKEN_QUERY, ctypes.byref(tok)):
+            return None
+        try:
+            val, ret = wintypes.DWORD(), wintypes.DWORD()
+            if not advapi32.GetTokenInformation(tok, TokenElevation, ctypes.byref(val),
+                                                ctypes.sizeof(val), ctypes.byref(ret)):
+                return None
+            return bool(val.value)
+        finally:
+            kernel32.CloseHandle(tok)
+    finally:
+        kernel32.CloseHandle(hp)
+
+
+def relaunch_as_admin(exe, params):
+    """UAC 창을 띄워 관리자 권한으로 다시 실행. 성공하면 True."""
+    r = shell32.ShellExecuteW(None, "runas", exe, params, None, 1)
+    return (r or 0) > 32
 
 
 class AccessDenied(Exception):

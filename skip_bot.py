@@ -11,6 +11,7 @@
 import argparse
 import datetime
 import os
+import subprocess
 import sys
 import time
 
@@ -73,7 +74,7 @@ def wait_window(keyword):
 
 def capture_template(keyword):
     hwnd = wait_window(keyword)
-    frame = w32.capture(hwnd)
+    frame = w32.capture(hwnd, allow_screen=True)
     if frame is None:
         sys.exit("캡처 실패. 게임 창이 최소화되어 있지 않은지 확인하세요.")
     w = frame.shape[1]
@@ -158,6 +159,7 @@ def run(args):
     paused = False
     warned = set()
     stat = {"t": time.time(), "best": None, "frames": 0, "changed": 0, "prev": None}
+    cap = {"fails": 0, "screen": False, "method": None}
     while True:
         if w32.snapshot_hotkey_pressed() and w32.is_valid(hwnd):
             save_snapshot(hwnd, det)
@@ -180,17 +182,17 @@ def run(args):
             continue
         warned.discard("min")
 
-        frame = w32.capture(hwnd)
+        frame = w32.capture(hwnd, allow_screen=cap["screen"])
         if frame is None:
+            cap["fails"] += 1
+            if cap["fails"] == 3:
+                handle_capture_failure(hwnd, cap)
             time.sleep(args.interval)
             continue
-        if frame.mean() < 1.0:
-            if "black" not in warned:
-                log("캡처 화면이 검은색입니다. 게임 그래픽 설정에서 '창 모드'인지 확인해 주세요.")
-                warned.add("black")
-            time.sleep(1)
-            continue
-        warned.discard("black")
+        cap["fails"] = 0
+        if w32.last_capture["method"] != cap["method"]:
+            cap["method"] = w32.last_capture["method"]
+            log(f"캡처 방식: {cap['method']}")
 
         match = det.find(frame)
         hit = det.is_hit(match)
@@ -216,8 +218,37 @@ def run(args):
             time.sleep(args.interval)
 
 
+def relaunch_admin():
+    if FROZEN:
+        exe, params = sys.executable, subprocess.list2cmdline(sys.argv[1:])
+    else:
+        exe, params = sys.executable, subprocess.list2cmdline([os.path.abspath(__file__)] + sys.argv[1:])
+    return w32.relaunch_as_admin(exe, params)
+
+
+def handle_capture_failure(hwnd, cap):
+    """게임 화면을 캡처할 수 없을 때 원인 안내 + 관리자 재실행 / 화면 복사 방식으로 대체."""
+    elevated = w32.game_elevation(hwnd)
+    log(f"게임 화면을 캡처하지 못했습니다. (오류 코드 {w32.last_capture['error']}, "
+        f"이 프로그램 관리자 권한: {'예' if w32.is_admin() else '아니오'}, "
+        f"게임 관리자 권한: {'예' if elevated else '아니오' if elevated is False else '확인 불가'})")
+    if not w32.is_admin():
+        log("게임이 관리자 권한으로 실행 중이면, 이 프로그램도 관리자 권한이어야 캡처/입력이 됩니다.")
+        ans = input("관리자 권한으로 다시 실행할까요? [Y/n] ").strip().lower()
+        if ans in ("", "y", "yes", "ㅛ"):
+            if relaunch_admin():
+                log("관리자 권한으로 새 창에서 실행합니다. 이 창은 닫힙니다.")
+                time.sleep(1.5)
+                sys.exit(0)
+            log("관리자 권한 실행이 취소되었습니다.")
+    if not cap["screen"]:
+        cap["screen"] = True
+        log("화면 복사 방식으로 전환합니다. 이 방식은 게임 창이 다른 창에 '가려지면' 감지하지 못합니다.")
+        log("  → 게임 창의 Skip 버튼 위치(오른쪽 위/아래)가 다른 창에 가려지지 않게 배치해 주세요.")
+
+
 def save_snapshot(hwnd, det):
-    frame = w32.capture(hwnd)
+    frame = w32.capture(hwnd, allow_screen=True)
     if frame is None:
         log("스냅샷 실패: 화면을 캡처하지 못했습니다.")
         return

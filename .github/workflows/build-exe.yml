@@ -22,6 +22,9 @@ jobs:
       - name: Install dependencies
         run: pip install pyinstaller -r requirements.txt
 
+      - name: Windows self-test (capture / input / detector)
+        run: python tests/win_selftest.py
+
       - name: Build exe
         run: pyinstaller --onefile --console --name EclipseSkip --add-data "templates;templates" skip_bot.py
 
