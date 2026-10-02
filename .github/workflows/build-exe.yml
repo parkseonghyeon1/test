@@ -26,14 +26,19 @@ jobs:
         run: python tests/win_selftest.py
 
       - name: Build exe
-        run: pyinstaller --onefile --console --name EclipseSkip --add-data "templates;templates" skip_bot.py
+        run: |
+          "VERSION = 'v1.1.${{ github.run_number }}'" | Out-File -Encoding utf8 version.py
+          pyinstaller --onefile --windowed --uac-admin --name EclipseSkip --add-data "templates;templates" app.py
 
-      - name: Smoke test
+      - name: Smoke test (GUI exe launches, engine runs, exits cleanly)
         shell: pwsh
         run: |
-          .\dist\EclipseSkip.exe --help
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          python -c "from detector import load_templates; assert len(load_templates('templates')) >= 3"
+          $out = Join-Path $env:RUNNER_TEMP "selftest.txt"
+          $p = Start-Process -FilePath .\dist\EclipseSkip.exe -ArgumentList "--selftest", $out -PassThru
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw "GUI did not exit" }
+          $r = Get-Content $out -ErrorAction Stop
+          Write-Host "selftest: $r"
+          if ($r -ne "ok") { exit 1 }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -43,12 +48,12 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: EclipseSkip v1.0.${{ github.run_number }}
+          tag_name: v1.1.${{ github.run_number }}
+          name: EclipseSkip v1.1.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           make_latest: true
           files: dist/EclipseSkip.exe
           body: |
             `EclipseSkip.exe` 를 다운로드해서 더블클릭하면 바로 실행됩니다. (Python 설치 불필요)
-            - Ctrl+F10: 일시정지/재개, 창 닫기 또는 Ctrl+C: 종료
-            - 게임을 관리자 권한으로 실행했다면 이 exe 도 '관리자 권한으로 실행' 하세요.
+            - 실행하면 관리자 권한 확인 창(UAC)이 뜹니다 → '예'
+            - Ctrl+F10: 일시정지/재개

@@ -261,6 +261,31 @@ def capture(hwnd, allow_screen=False):
     return None
 
 
+# ---- 창 숨기기 (화면 밖으로 이동) ----
+SM_XVIRTUALSCREEN, SM_CXVIRTUALSCREEN = 76, 78
+SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0004, 0x0010
+user32.SetWindowPos.argtypes = [HWND, HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+user32.GetSystemMetrics.argtypes = [ctypes.c_int]
+
+
+def window_pos(hwnd):
+    r = wintypes.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(r))
+    return r.left, r.top
+
+
+def move_window(hwnd, x, y):
+    user32.SetWindowPos(hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+
+
+def move_offscreen(hwnd):
+    """창을 모든 모니터 오른쪽 바깥으로 옮기고 원래 위치를 반환. (최소화와 달리 게임은 계속 그려진다)"""
+    pos = window_pos(hwnd)
+    right = user32.GetSystemMetrics(SM_XVIRTUALSCREEN) + user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
+    move_window(hwnd, right + 200, pos[1])
+    return pos
+
+
 # ---- 권한 ----
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 TOKEN_QUERY = 0x0008

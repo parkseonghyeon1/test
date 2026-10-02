@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 pip install pyinstaller -r requirements.txt
-pyinstaller --onefile --console --name EclipseSkip --add-data "templates;templates" skip_bot.py
+pyinstaller --onefile --windowed --uac-admin --name EclipseSkip --add-data "templates;templates" app.py
 echo.
 echo dist\EclipseSkip.exe was created.
 pause
