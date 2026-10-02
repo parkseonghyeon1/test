@@ -23,7 +23,10 @@ if sys.platform != "win32":
 
 import win32_utils as w32  # noqa: E402
 
-BASE_DIR = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
+FROZEN = getattr(sys, "frozen", False)  # PyInstaller exe 로 실행 중인지
+BASE_DIR = os.path.dirname(sys.executable if FROZEN else os.path.abspath(__file__))
+# exe 안에 포함된 기본 템플릿 + exe 옆 templates 폴더(--capture 로 추가한 것)를 함께 사용
+BUNDLED_TEMPLATE_DIR = os.path.join(getattr(sys, "_MEIPASS", BASE_DIR), "templates")
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 DEBUG_DIR = os.path.join(BASE_DIR, "debug")
 
@@ -130,7 +133,11 @@ class Skipper:
 
 
 def run(args):
-    templates = load_templates(TEMPLATE_DIR)
+    templates = {}
+    for folder in (BUNDLED_TEMPLATE_DIR, TEMPLATE_DIR):
+        if os.path.isdir(folder):
+            templates.update({t.name: t for t in load_templates(folder)})
+    templates = list(templates.values())
     if not templates:
         sys.exit(f"템플릿이 없습니다: {TEMPLATE_DIR}")
     log(f"템플릿 {len(templates)}개 로드: {', '.join(t.name for t in templates)}")
@@ -186,7 +193,11 @@ def run(args):
                 cv2.rectangle(dbg, (match.x - match.w // 2, match.y - int(match.h * 0.3)),
                               (match.x + match.w // 2, match.y + int(match.h * 0.7)), (0, 0, 255), 2)
                 imwrite_unicode(os.path.join(DEBUG_DIR, f"{time.time():.0f}_{match.score:.2f}.png"), dbg)
-            skipper.send(hwnd, match)
+            try:
+                skipper.send(hwnd, match)
+            except w32.AccessDenied:
+                sys.exit("게임이 관리자 권한으로 실행 중이라 입력을 보낼 수 없습니다.\n"
+                         "이 프로그램을 마우스 오른쪽 클릭 → '관리자 권한으로 실행' 해 주세요.")
             time.sleep(args.cooldown)
         else:
             time.sleep(args.interval)
@@ -202,6 +213,12 @@ def main():
             run(args)
     except KeyboardInterrupt:
         log("종료")
+    except SystemExit as e:
+        if e.code not in (None, 0):
+            log(str(e.code))
+            if FROZEN:  # exe 를 더블클릭했을 때 오류 메시지를 보고 닫을 수 있게
+                input("Enter 키를 누르면 종료합니다...")
+        raise
 
 
 if __name__ == "__main__":

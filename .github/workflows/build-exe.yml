@@ -1,0 +1,51 @@
+name: Build Windows exe
+
+on:
+  push:
+    paths-ignore:
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyinstaller -r requirements.txt
+
+      - name: Build exe
+        run: pyinstaller --onefile --console --name EclipseSkip --add-data "templates;templates" skip_bot.py
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          .\dist\EclipseSkip.exe --help
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python -c "from detector import load_templates; assert len(load_templates('templates')) >= 3"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EclipseSkip
+          path: dist/EclipseSkip.exe
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: EclipseSkip v1.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: dist/EclipseSkip.exe
+          body: |
+            `EclipseSkip.exe` 를 다운로드해서 더블클릭하면 바로 실행됩니다. (Python 설치 불필요)
+            - Ctrl+F10: 일시정지/재개, 창 닫기 또는 Ctrl+C: 종료
+            - 게임을 관리자 권한으로 실행했다면 이 exe 도 '관리자 권한으로 실행' 하세요.

@@ -149,6 +149,15 @@ def capture(hwnd):
         user32.ReleaseDC(hwnd, hdc)
 
 
+class AccessDenied(Exception):
+    """게임이 관리자 권한으로 실행 중이라 메시지가 차단됨 (UIPI)."""
+
+
+def _post(hwnd, msg, wp, lp):
+    if not user32.PostMessageW(hwnd, msg, wp, lp) and ctypes.get_last_error() == 5:
+        raise AccessDenied()
+
+
 def _lparam_xy(x, y):
     return (y & 0xFFFF) << 16 | (x & 0xFFFF)
 
@@ -156,19 +165,19 @@ def _lparam_xy(x, y):
 def post_click(hwnd, x, y):
     """포커스를 뺏지 않고 창에 마우스 클릭 메시지 전송."""
     lp = _lparam_xy(x, y)
-    user32.PostMessageW(hwnd, WM_MOUSEMOVE, 0, lp)
+    _post(hwnd, WM_MOUSEMOVE, 0, lp)
     time.sleep(0.03)
-    user32.PostMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp)
+    _post(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp)
     time.sleep(0.05)
-    user32.PostMessageW(hwnd, WM_LBUTTONUP, 0, lp)
+    _post(hwnd, WM_LBUTTONUP, 0, lp)
 
 
 def post_key(hwnd, vk=VK_SPACE):
     """포커스를 뺏지 않고 창에 키 입력 메시지 전송."""
     sc = user32.MapVirtualKeyW(vk, 0)
-    user32.PostMessageW(hwnd, WM_KEYDOWN, vk, 1 | (sc << 16))
+    _post(hwnd, WM_KEYDOWN, vk, 1 | (sc << 16))
     time.sleep(0.05)
-    user32.PostMessageW(hwnd, WM_KEYUP, vk, 1 | (sc << 16) | (1 << 30) | (1 << 31))
+    _post(hwnd, WM_KEYUP, vk, 1 | (sc << 16) | (1 << 30) | (1 << 31))
 
 
 def foreground_key(hwnd, vk=VK_SPACE):

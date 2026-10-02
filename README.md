@@ -12,7 +12,18 @@
 3. 찾으면 `PostMessage`로 게임 창에 **Space 키** 메시지를 보냅니다. 포커스는 이동하지 않아요.
    - Space가 먹히지 않으면 같은 위치에 **클릭 메시지**를 보내는 방식으로 자동 전환합니다.
 
-## 설치 / 실행 (Windows 10/11)
+## 바로 실행하기 (exe)
+
+1. GitHub 저장소의 **Releases**에서 최신 `EclipseSkip.exe`를 다운로드합니다.
+2. 더블클릭해서 실행하면 됩니다. Python은 설치하지 않아도 돼요.
+   - 처음 실행할 때 Windows SmartScreen이 "PC 보호" 창을 띄우면 **추가 정보 → 실행**을 누르세요. 서명되지 않은 exe라서 나오는 경고예요.
+   - 게임을 관리자 권한으로 실행했다면 exe도 **마우스 오른쪽 클릭 → 관리자 권한으로 실행**으로 켜야 합니다.
+   - 옵션을 쓰려면 바로가기를 만들고 대상 뒤에 붙이거나(예: `EclipseSkip.exe --method click`), cmd에서 실행하세요.
+   - `--capture`로 만든 템플릿은 exe 옆 `templates` 폴더에 저장되고, 기본 템플릿과 함께 사용됩니다.
+
+exe는 코드를 push할 때마다 GitHub Actions(`.github/workflows/build-exe.yml`)가 Windows에서 자동으로 빌드해서 Releases에 올립니다.
+
+## 소스로 설치 / 실행 (Windows 10/11)
 
 ```bat
 :: Python 3.10 이상 필요
@@ -30,7 +41,7 @@ run.bat
 
 ### exe로 만들기
 
-`build_exe.bat`을 실행하면 `dist\EclipseSkip.exe`가 만들어집니다. 실행할 때 `templates` 폴더가 exe 옆에 있어야 해요.
+`build_exe.bat`을 실행하면 `dist\EclipseSkip.exe`가 만들어집니다. 기본 템플릿은 exe 안에 포함돼요.
 
 ## 옵션
 
