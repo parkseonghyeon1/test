@@ -7,6 +7,7 @@ import numpy as np
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 HWND = wintypes.HWND
 HDC = wintypes.HDC
@@ -17,6 +18,7 @@ user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
 user32.GetWindowTextLengthW.argtypes = [HWND]
 user32.GetWindowTextW.argtypes = [HWND, wintypes.LPWSTR, ctypes.c_int]
 user32.IsWindowVisible.argtypes = [HWND]
+user32.GetClassNameW.argtypes = [HWND, wintypes.LPWSTR, ctypes.c_int]
 user32.IsWindow.argtypes = [HWND]
 user32.IsIconic.argtypes = [HWND]
 user32.GetClientRect.argtypes = [HWND, ctypes.POINTER(wintypes.RECT)]
@@ -33,6 +35,9 @@ user32.GetAsyncKeyState.restype = ctypes.c_short
 user32.GetWindowThreadProcessId.argtypes = [HWND, ctypes.POINTER(wintypes.DWORD)]
 user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
 user32.keybd_event.argtypes = [wintypes.BYTE, wintypes.BYTE, wintypes.DWORD, ctypes.c_void_p]
+
+kernel32.GetConsoleWindow.restype = HWND
+kernel32.SetConsoleTitleW.argtypes = [wintypes.LPCWSTR]
 
 gdi32.CreateCompatibleDC.argtypes = [HDC]
 gdi32.CreateCompatibleDC.restype = HDC
@@ -90,22 +95,65 @@ def _title(hwnd):
     return buf.value
 
 
+# 게임 창이 아닌 것이 확실한 창 클래스 (탐색기, 콘솔, Windows Terminal, 메모장 등)
+_EXCLUDED_CLASSES = {
+    "CabinetWClass", "ExploreWClass", "ConsoleWindowClass",
+    "CASCADIA_HOSTING_WINDOW_CLASS", "Notepad", "#32770",
+}
+
+
+def _class_name(hwnd):
+    buf = ctypes.create_unicode_buffer(256)
+    user32.GetClassNameW(hwnd, buf, 256)
+    return buf.value
+
+
+def _is_own_or_console(hwnd):
+    """이 프로그램 자신의 창(콘솔 포함)인지."""
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    if pid.value == kernel32.GetCurrentProcessId():
+        return True
+    return bool(hwnd == kernel32.GetConsoleWindow())
+
+
 def find_window(keyword):
-    """제목에 keyword 가 포함된 보이는 창 핸들 (없으면 None)."""
-    found = []
+    """제목에 keyword 가 포함된 게임 창 핸들 (없으면 None).
+
+    콘솔/탐색기 창처럼 제목에 경로가 들어간 창은 제외한다.
+    (exe 를 '이클립스' 폴더에 두면 콘솔 제목에도 '이클립스'가 들어가기 때문)
+    """
+    candidates = []
 
     def cb(hwnd, _):
-        if user32.IsWindowVisible(hwnd) and keyword in _title(hwnd):
-            found.append(hwnd)
-            return False
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        title = _title(hwnd)
+        if keyword not in title or _is_own_or_console(hwnd):
+            return True
+        if _class_name(hwnd) in _EXCLUDED_CLASSES:
+            return True
+        if "\\" in title or "/" in title or ".exe" in title.lower():
+            return True
+        # 실제 게임 창 제목('이클립스: 더 어웨이크닝')에 가까울수록 우선
+        rank = 0 if "어웨이크닝" in title else 1 if title.startswith(keyword) else 2
+        candidates.append((rank, hwnd))
         return True
 
     user32.EnumWindows(WNDENUMPROC(cb), 0)
-    return found[0] if found else None
+    return min(candidates)[1] if candidates else None
+
+
+def set_console_title(title):
+    kernel32.SetConsoleTitleW(title)
 
 
 def window_title(hwnd):
     return _title(hwnd)
+
+
+def window_class(hwnd):
+    return _class_name(hwnd)
 
 
 def is_valid(hwnd):

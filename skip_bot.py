@@ -67,7 +67,7 @@ def wait_window(keyword):
         while not hwnd:
             time.sleep(2)
             hwnd = w32.find_window(keyword)
-    log(f"게임 창 발견: {w32.window_title(hwnd)}  (클라이언트 {w32.client_size(hwnd)})")
+    log(f"게임 창 발견: {w32.window_title(hwnd)}  (클래스 {w32.window_class(hwnd)}, 클라이언트 {w32.client_size(hwnd)})")
     return hwnd
 
 
@@ -256,6 +256,7 @@ def report_status(stat, frame, match):
 
 def main():
     w32.set_dpi_aware()
+    w32.set_console_title("EclipseSkip")  # 콘솔 제목에 '이클립스'가 들어가 게임 창으로 오인되지 않게
     args = parse_args()
     try:
         if args.capture:
