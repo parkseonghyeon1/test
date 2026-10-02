@@ -153,9 +153,14 @@ def run(args):
     hwnd = wait_window(args.title)
     log(f"동작 시작 (입력 방식: {args.method}) - Ctrl+F10 일시정지/재개, Ctrl+C 종료")
 
+    log("Ctrl+F11: 지금 프로그램이 보고 있는 화면을 debug 폴더에 저장 (문제 확인용)")
+
     paused = False
     warned = set()
+    stat = {"t": time.time(), "best": None, "frames": 0, "changed": 0, "prev": None}
     while True:
+        if w32.snapshot_hotkey_pressed() and w32.is_valid(hwnd):
+            save_snapshot(hwnd, det)
         if w32.hotkey_pressed():
             paused = not paused
             log("일시정지" if paused else "재개")
@@ -189,6 +194,7 @@ def run(args):
 
         match = det.find(frame)
         hit = det.is_hit(match)
+        report_status(stat, frame, match)
         if args.debug and match:
             log(f"  best={match.score:.3f} ({match.name}) at {match.x},{match.y}")
 
@@ -208,6 +214,44 @@ def run(args):
             time.sleep(args.cooldown)
         else:
             time.sleep(args.interval)
+
+
+def save_snapshot(hwnd, det):
+    frame = w32.capture(hwnd)
+    if frame is None:
+        log("스냅샷 실패: 화면을 캡처하지 못했습니다.")
+        return
+    match = det.find(frame)
+    os.makedirs(DEBUG_DIR, exist_ok=True)
+    path = os.path.join(DEBUG_DIR, f"snapshot_{datetime.datetime.now():%H%M%S}.png")
+    if match:
+        x0 = int(frame.shape[1] * (1 - det.roi_right))
+        cv2.line(frame, (x0, 0), (x0, frame.shape[0]), (255, 255, 0), 1)  # 검사 영역 경계
+        cv2.rectangle(frame, (match.x - match.w // 2, match.y - int(match.h * 0.3)),
+                      (match.x + match.w // 2, match.y + int(match.h * 0.7)), (0, 0, 255), 2)
+    imwrite_unicode(path, frame)
+    info = f"최고 점수 {match.score:.2f} ({match.name}) 위치 {match.x},{match.y}" if match else ""
+    log(f"스냅샷 저장: {path}  {info}")
+
+
+def report_status(stat, frame, match):
+    """10초마다 상태 출력: 최고 매칭 점수, 캡처 화면이 실제로 갱신되는지."""
+    small = cv2.resize(frame, (64, 36), interpolation=cv2.INTER_AREA).astype("int16")
+    if stat["prev"] is not None and abs(small - stat["prev"]).mean() > 0.5:
+        stat["changed"] += 1
+    stat["prev"] = small
+    stat["frames"] += 1
+    if match and (stat["best"] is None or match.score > stat["best"].score):
+        stat["best"] = match
+    if time.time() - stat["t"] < 10:
+        return
+    b = stat["best"]
+    msg = f"상태: 최근 10초 최고 점수 {b.score:.2f} ({b.name})" if b else "상태: 매칭 없음"
+    log(msg + f", 캡처 {stat['frames']}회 중 화면 변화 {stat['changed']}회")
+    if stat["frames"] > 3 and stat["changed"] == 0:
+        log("  ⚠ 캡처 화면이 변하지 않습니다. 이 게임은 백그라운드 캡처가 갱신되지 않는 것 같아요. "
+            "Ctrl+F11 로 스냅샷을 저장해서 확인해 주세요.")
+    stat.update(t=time.time(), best=None, frames=0, changed=0)
 
 
 def main():

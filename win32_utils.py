@@ -202,6 +202,15 @@ def foreground_key(hwnd, vk=VK_SPACE):
             user32.AttachThreadInput(cur_tid, fg_tid, False)
 
 
+VK_F11 = 0x7A
+
+
+def snapshot_hotkey_pressed():
+    """Ctrl+F11 (스냅샷 저장)."""
+    ctrl = user32.GetAsyncKeyState(VK_CONTROL) & 0x8000
+    return bool(ctrl and user32.GetAsyncKeyState(VK_F11) & 0x0001)
+
+
 def hotkey_pressed():
     """Ctrl+F10 이 눌렸는지 (일시정지/재개 토글용)."""
     ctrl = user32.GetAsyncKeyState(VK_CONTROL) & 0x8000
