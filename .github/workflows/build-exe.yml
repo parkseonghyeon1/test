@@ -22,6 +22,9 @@ jobs:
       - name: Install dependencies
         run: pip install pyinstaller -r requirements.txt
 
+      - name: Detector test (window size / aspect ratio changes)
+        run: python tests/test_detector_resize.py
+
       - name: Windows self-test (capture / input / detector)
         run: python tests/win_selftest.py
 

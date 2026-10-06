@@ -129,6 +129,7 @@ class SkipEngine(threading.Thread):
         self._reload = True
         self._snapshot = None  # 스냅샷 요청 콜백
         self.hwnd = None
+        self.window_size = None
         self.skip_count = 0
         self.detector = None
         self.skipper = Skipper(w32, settings, self.emit)
@@ -193,6 +194,7 @@ class SkipEngine(threading.Thread):
                         self.emit("window", info)
                         self.emit("log", f"게임 창 발견: {info['title']} {info['size'][0]}×{info['size'][1]}")
                         cap_fails, cap_ok = 0, False
+                        self.window_size = None
                 self._sleep(0.3)
                 continue
 
@@ -221,6 +223,13 @@ class SkipEngine(threading.Thread):
                 self._sleep(s.interval)
                 continue
             cap_fails = 0
+            size = (frame.shape[1], frame.shape[0])
+            if size != self.window_size:  # 게임 창 크기가 바뀜 → 템플릿 배율은 탐지기가 알아서 다시 맞춤
+                if self.window_size:
+                    self.emit("log", f"게임 화면 크기 변경: {self.window_size[0]}×{self.window_size[1]} → "
+                                     f"{size[0]}×{size[1]}")
+                self.window_size = size
+                self.emit("resize", size)
             if not cap_ok:
                 cap_ok = True
                 self.emit("capture", "ok")
@@ -269,6 +278,6 @@ def save_custom_template(frame, box):
     x0, y0, x1, y1 = box
     crop = cv2.cvtColor(frame[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY)
     os.makedirs(USER_TEMPLATE_DIR, exist_ok=True)
-    name = f"custom_{time.strftime('%Y%m%d_%H%M%S')}@{frame.shape[1]}.png"
+    name = f"custom_{time.strftime('%Y%m%d_%H%M%S')}@{frame.shape[1]}x{frame.shape[0]}.png"
     imwrite_unicode(os.path.join(USER_TEMPLATE_DIR, name), crop)
     return name

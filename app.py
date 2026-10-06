@@ -319,7 +319,7 @@ class App:
         self.tree = ttk.Treeview(f, columns=("kind", "width"), height=5)
         self.tree.heading("#0", text="이름", anchor="w")
         self.tree.heading("kind", text="종류", anchor="w")
-        self.tree.heading("width", text="기준 화면 폭", anchor="w")
+        self.tree.heading("width", text="기준 화면 크기", anchor="w")
         self.tree.column("#0", width=320)
         self.tree.column("kind", width=90)
         self.tree.column("width", width=110)
@@ -445,7 +445,8 @@ class App:
         self.tree.delete(*self.tree.get_children())
         for t, custom in eng.all_templates():
             self.tree.insert("", "end", iid=t.name, text=t.name,
-                             values=("사용자 추가" if custom else "기본", t.ref_width or "-"))
+                             values=("사용자 추가" if custom else "기본",
+                                     f"{t.ref_width}×{t.ref_height}" if t.ref_width else "-"))
 
     def delete_template(self):
         sel = self.tree.selection()
@@ -517,6 +518,8 @@ class App:
                 return
             self.set_info("capture", "PrintWindow (가려져도 동작)", GREEN)
             self.set_state("running" if self.engine.running.is_set() else "paused")
+        elif kind == "resize":
+            self.set_info("size", f"{val[0]} × {val[1]}")
         elif kind == "method":
             self.set_info("method", eng.METHODS.get(val, val) + " (자동 전환됨)", GOLD)
         elif kind == "score":

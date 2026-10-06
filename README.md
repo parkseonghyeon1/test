@@ -10,6 +10,13 @@
    - **관리자 권한 확인 창(UAC)**이 뜨면 **예**를 누르세요. 게임이 관리자 권한으로 실행되기 때문에, 이 프로그램도 관리자 권한이어야 화면을 보고 입력을 보낼 수 있어요.
    - Windows SmartScreen이 "PC 보호" 창을 띄우면 **추가 정보 → 실행**을 누르세요. 서명되지 않은 exe라서 나오는 경고예요.
 
+## 게임 창 크기를 바꿔도 동작해요
+
+- 창 크기를 늘리거나 줄여도, 실행 중에 바꿔도 자동으로 맞춰서 Skip을 찾습니다. 로그에 "게임 화면 크기 변경"이 표시돼요.
+- 16:9가 아닌 비율(예: 2560×1080 같은 가로로 넓은 창, 세로로 긴 창)도 지원합니다. UI가 창의 폭과 높이 중 어느 쪽을 따라 커지는지 둘 다 확인해요.
+- 창이 커도 검사 속도는 거의 같아요. 큰 화면은 줄여서 검사하고, 한 번 맞은 배율을 기억해 두기 때문이에요.
+- 아주 작은 창(가로 800px 미만)은 Skip 글자가 너무 작아져서 정확도가 떨어질 수 있어요.
+
 ## 화면 구성
 
 | 영역 | 설명 |
@@ -49,10 +56,11 @@ build_exe.bat           :: dist\EclipseSkip.exe 빌드
 |---|---|
 | `app.py` | tkinter GUI |
 | `engine.py` | 백그라운드 스레드: 창 찾기 → 캡처 → 감지 → 입력, 설정 저장 |
-| `detector.py` | OpenCV 템플릿 매칭 (창 크기에 맞춰 자동 배율 조정) |
+| `detector.py` | OpenCV 템플릿 매칭 (창 폭·높이 기준 배율 후보 + 작업 해상도 + 배율 기억) |
 | `win32_utils.py` | Windows API (PrintWindow 캡처, PostMessage 입력, 권한 확인, 창 이동) |
-| `templates/` | 기본 Skip 이미지 (파일명의 `@1244`는 잘라낸 당시 게임 화면 폭) |
+| `templates/` | 기본 Skip 이미지 (파일명의 `@1244`·`@1244x700`은 잘라낸 당시 게임 화면 크기) |
 | `tests/win_selftest.py` | Windows CI 자가 테스트 |
+| `tests/test_detector_resize.py` | 창 크기·비율 변화 감지 테스트 (합성 화면) |
 
 코드를 push하면 GitHub Actions(`.github/workflows/build-exe.yml`)가 Windows에서 테스트·빌드한 뒤 Releases에 exe를 올립니다.
 
