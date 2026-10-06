@@ -512,9 +512,10 @@ class App:
                 self.set_info("capture", "멈춤 (최소화됨)", RED)
                 self.set_state("minimized")
                 return
-            bg_ok = val and val.startswith("PrintWindow")
-            self.set_info("capture", f"{val}  ({'가려져도 동작' if bg_ok else '가려지면 안 됨'})",
-                          GREEN if bg_ok else GOLD)
+            if val == "failed":
+                self.set_info("capture", "PrintWindow 실패", RED)
+                return
+            self.set_info("capture", "PrintWindow (가려져도 동작)", GREEN)
             self.set_state("running" if self.engine.running.is_set() else "paused")
         elif kind == "method":
             self.set_info("method", eng.METHODS.get(val, val) + " (자동 전환됨)", GOLD)
@@ -536,9 +537,9 @@ class App:
         if not d["admin"]:
             self.show_banner(f"게임 {what} 못했어요. 게임이 관리자 권한으로 실행 중이라 막힌 것 같아요.",
                              "관리자 권한으로 다시 실행", self.relaunch_admin)
-        else:
-            self.show_banner("백그라운드 캡처가 안 돼서 화면 복사 방식으로 동작합니다. "
-                             "게임 창의 Skip 버튼 자리가 다른 창에 가려지지 않게 해 주세요.")
+        elif not d.get("input"):
+            self.show_banner("게임 화면을 캡처하지 못했어요. 게임이 창 모드인지 확인해 주세요. "
+                             "화면이 다시 잡히면 자동으로 이어서 동작합니다.")
 
     def draw_preview(self, frame, match):
         img = frame

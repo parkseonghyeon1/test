@@ -30,12 +30,9 @@ try:
     print("window:", w32.window_title(hwnd), w32.window_class(hwnd), w32.client_size(hwnd))
 
     w, h = w32.client_size(hwnd)
-    for name, fn in w32._BACKGROUND_METHODS + [("screen", w32._cap_screen)]:
-        img = fn(hwnd, w, h)
-        print(f"{name}: {None if img is None else (img.shape, round(float(img.mean()), 1))} err={w32.last_capture['error']}")
-    img = w32.capture(hwnd, allow_screen=True)
-    assert img is not None and img.shape[:2] == (h, w), "capture failed"
-    print("capture() ok via", w32.last_capture["method"])
+    img = w32.capture(hwnd)
+    assert img is not None and img.shape[:2] == (h, w), f"capture failed: {w32.last_capture['error']}"
+    print("PrintWindow capture ok:", img.shape, round(float(img.mean()), 1))
 
     print("is_admin:", w32.is_admin(), "notepad elevated:", w32.game_elevation(hwnd))
     # 메모장 클래스는 제외 목록에 있으므로 게임 창으로 잡히면 안 됨

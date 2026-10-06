@@ -164,7 +164,7 @@ class SkipEngine(threading.Thread):
     # ---- 스레드 ----
     def run(self):
         last_find, last_frame_emit = 0.0, 0.0
-        cap_fails, cap_method, min_warned = 0, None, False
+        cap_fails, cap_ok, min_warned = 0, False, False
         self.emit("state", "running")
         while not self._stop_evt.is_set():
             if self.w32.hotkey_pressed():
@@ -192,7 +192,7 @@ class SkipEngine(threading.Thread):
                                 "elevated": self.w32.game_elevation(self.hwnd)}
                         self.emit("window", info)
                         self.emit("log", f"게임 창 발견: {info['title']} {info['size'][0]}×{info['size'][1]}")
-                        cap_fails, cap_method = 0, None
+                        cap_fails, cap_ok = 0, False
                 self._sleep(0.3)
                 continue
 
@@ -205,12 +205,14 @@ class SkipEngine(threading.Thread):
                 continue
             if min_warned:
                 min_warned = False
-                cap_method = None
+                cap_ok = False
 
-            frame = self.w32.capture(self.hwnd, allow_screen=cap_fails >= 3)
+            frame = self.w32.capture(self.hwnd)
             if frame is None:
                 cap_fails += 1
                 if cap_fails == 3:
+                    cap_ok = False
+                    self.emit("capture", "failed")
                     self.emit("capture_fail", {
                         "error": self.w32.last_capture["error"],
                         "admin": self.w32.is_admin(),
@@ -218,14 +220,10 @@ class SkipEngine(threading.Thread):
                     })
                 self._sleep(s.interval)
                 continue
-            if self.w32.last_capture["method"] != cap_method:
-                cap_method = self.w32.last_capture["method"]
-                self.emit("capture", cap_method)
-                if cap_fails >= 3:
-                    self.emit("log", "백그라운드 캡처가 안 돼서 화면 복사 방식으로 동작합니다. "
-                                     "게임 창의 Skip 버튼 자리가 가려지지 않게 해 주세요.")
-            if cap_fails < 3:
-                cap_fails = 0
+            cap_fails = 0
+            if not cap_ok:
+                cap_ok = True
+                self.emit("capture", "ok")
 
             if self._snapshot:
                 cb, self._snapshot = self._snapshot, None
